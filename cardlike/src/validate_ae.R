@@ -19,7 +19,7 @@ ae<-read_sas(
 ) %>% clean_names() 
 
 
-ae.s1<-ae %>% filter(saf==1,com_e_p_fg=="Y", aerl==2) %>% select(patid,com_e_pt_j, com_e_soc_j, aerl,aebeg, aebegday,ctcgr,jettr4,starts_with("aekbn"),starts_with("neut")) %>% mutate(patid=str_pad(.$patid,width = 10,side="left", pad="0"))
+ae.s1<-ae %>% filter(saf==1, aerl==2,aeflg==1) %>% select(patid,com_e_pt_j, com_e_soc_j, aerl,aebeg, aebegday,ctcgr,jettr4,starts_with("aekbn"),starts_with("neut")) %>% mutate(patid=str_pad(.$patid,width = 10,side="left", pad="0"))
 
 saihi.path<-here("cardlike","data","saihi.sas7bdat")
 
@@ -56,17 +56,19 @@ pt.r=case_when(
   com_e_pt_j %in% c("好中球減少症","無顆粒球症","好中球数減少")~"好中球減少症*",
   str_detect(com_e_pt_j,"血小板減少症|血小板数減少")~"血小板減少症*",
   str_detect(com_e_pt_j,"白血球減少症|白血球数減少")~"白血球減少症*",
+  str_detect(com_e_pt_j,"貧血|ヘモグロビン減少")~"貧血*",
   TRUE~com_e_pt_j
 ),
 soc.r=case_when(
   str_detect(com_e_pt_j,"好中球減少症|無顆粒球症|好中球数減少")~"血液およびリンパ系障害",
   str_detect(com_e_pt_j,"血小板減少症|血小板数減少")~"血液およびリンパ系障害",
   str_detect(com_e_pt_j,"白血球減少症|白血球数減少")~"血液およびリンパ系障害",
+  str_detect(com_e_pt_j,"貧血|ヘモグロビン減少")~"血液およびリンパ系障害",
   TRUE~com_e_soc_j
 )
 ) %>% select(patid,aesi,pt.r,com_e_pt_j,soc.r,com_e_soc_j,any_ae,g3_ae)
 
-ae.s2 |>
+adr.card.out<-ae.s2 |>
   tbl_ae_focus(
     id_df = saihi.r1,
     id = patid,
@@ -76,7 +78,11 @@ ae.s2 |>
     include = c(any_ae,g3_ae)
   ) 
 
-ae.s2 |>
+adr.card.out.path<-here("cardlike","src","adr_card.docx")
+
+adr.card.out %>% as_flex_table() %>% flextable::save_as_docx(path=adr.card.out.path)
+
+adr.card.out.mod<-ae.s2 |>
   tbl_ae_focus(
     id_df = saihi.r1,
     id = patid,
@@ -86,8 +92,25 @@ ae.s2 |>
     include = c(any_ae,g3_ae)
   ) 
 
+adr.card.out.mod.path<-here("cardlike","src","adr_card_mod.docx")
 
-adr.all<- inner_join(saihi.all,ae,by="patid") %>% mutate(any_ae=TRUE,g3_ae=if_else(ctcgr>=3 & !is.na(ctcgr),TRUE,FALSE)) %>% filter(com_e_p_fg=="Y", aerl==2) %>% mutate(aesi=case_when(
+adr.card.out.mod %>% as_flex_table() %>% flextable::save_as_docx(path=adr.card.out.mod.path)
+
+# 特定の有害事象を全例で出力
+aesi.card.out<-ae.s2 %>% tbl_ae_focus(
+  id_df = saihi.r1,
+  id = patid,
+  ae = aesi,
+  sort = "ae",
+  include = c(any_ae,g3_ae)
+) 
+
+aesi.card.path<-here("cardlike","src","aesi_card.docx")
+
+aesi.card.out %>% as_flex_table() %>% flextable::save_as_docx(path=aesi.card.path)
+
+
+adr.all<- inner_join(saihi.all,ae,by="patid") %>% mutate(any_ae=TRUE,g3_ae=if_else(ctcgr>=3 & !is.na(ctcgr),TRUE,FALSE)) %>% filter(aerl==2,aeflg==1) %>% mutate(aesi=case_when(
   aekbn1==1~"好中球減少症",
   aekbn2==1~"発熱性好中球減少症",
   aekbn3==1~"腎不全",
@@ -95,7 +118,23 @@ adr.all<- inner_join(saihi.all,ae,by="patid") %>% mutate(any_ae=TRUE,g3_ae=if_el
   aekbn5==1~"貧血",
   aekbn6==1~"下痢",
   aekbn7==1~"ニューロパチー"
-))
+)
+,
+pt.r=case_when(
+  com_e_pt_j %in% c("好中球減少症","無顆粒球症","好中球数減少")~"好中球減少症*",
+  str_detect(com_e_pt_j,"血小板減少症|血小板数減少")~"血小板減少症*",
+  str_detect(com_e_pt_j,"白血球減少症|白血球数減少")~"白血球減少症*",
+  str_detect(com_e_pt_j,"貧血|ヘモグロビン減少")~"貧血*",
+  TRUE~com_e_pt_j
+),
+soc.r=case_when(
+  str_detect(com_e_pt_j,"好中球減少症|無顆粒球症|好中球数減少")~"血液およびリンパ系障害",
+  str_detect(com_e_pt_j,"血小板減少症|血小板数減少")~"血液およびリンパ系障害",
+  str_detect(com_e_pt_j,"白血球減少症|白血球数減少")~"血液およびリンパ系障害",
+  str_detect(com_e_pt_j,"貧血|ヘモグロビン減少")~"血液およびリンパ系障害",
+  TRUE~com_e_soc_j
+)
+)
 
 saihi.all<-saihi %>% filter(SAF==1) %>% clean_names() %>% select(patid)
 
@@ -124,6 +163,20 @@ aesi.out<-adr.all %>% tbl_ae_focus(
 aesi.path<-here("cardlike","src","aesi.docx")
 
 aesi.out %>% as_flex_table() %>% flextable::save_as_docx(path=aesi.path)
+
+# 修正した有害事象を全例で出力
+adr.mod.out<-adr.all %>% tbl_ae_focus(
+  id_df = saihi.all,
+  id = patid,
+  ae = pt.r,
+  soc= soc.r,
+  sort = c("ae","soc"),
+  include = c(any_ae,g3_ae)
+) 
+
+adr.mod.path<-here("cardlike","src","adr_mod.docx")
+
+adr.mod.out %>% as_flex_table() %>% flextable::save_as_docx(path=adr.mod.path)
 
 
 
