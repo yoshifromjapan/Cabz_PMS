@@ -6,6 +6,9 @@ library(skimr)
 library(lubridate)
 library(janitor)
 library(gtsummary)
+library(readxl)
+library(survival)
+library(survminer)
 
 create.project(project.name = "cardlike",template = "minimal")
 
@@ -44,7 +47,7 @@ jet.med.1<- inner_join(saihi,jet.med,by="PATID") %>% mutate(fst.date=ymd(FSTDATE
 jet.med.2 <- jet.med.1 %>% group_by(PATID) %>% summarize(max.cyc=max(JETCYCLE),max.dur=max(trt.dur.day),cumdose=max(cumsum(JETDOSEN)))%>% clean_names()
 skim(jet.med.2) 
 
-back.1<-inner_join(back,saihi.r1,by="patid") %>% clean_names() %>% select("patid","fstdosen","fstdosec","fstdosec2","fstdate","enddate","obsterm","doses","dosecyc","rdi","prepsa_a","psaeff2_a","stopum","stop_ae") %>% inner_join(jet.med.2,by="patid") %>% mutate(trtgrp=cut(fstdosen,breaks=c(-Inf,20,Inf), labels = c("x<=20","20<x")))
+back.1<-inner_join(back,saihi.r1,by="patid") %>% clean_names() %>% select("patid","fstdosen","fstdosec","fstdosec2","fstdate","enddate","obsterm","doses","dosecyc","rdi","prepsa_a","psaeff2_a","stopum","stop_ae","ttf") %>% inner_join(jet.med.2,by="patid") %>% mutate(trtgrp=cut(fstdosen,breaks=c(-Inf,20,Inf), labels = c("x<=20","20<x")))
 
 skim(back.1)
 
@@ -60,8 +63,8 @@ stop.ae<-ae %>% filter(saf==1, aerl==2,aeflg==1,jettr4==-1) %>% select(patid) %>
 
 back.2<-back.1 %>% left_join(stop.ae,by="patid")
   
-back.out<-back.2 %>% select(trtgrp,dosecyc,obsterm,doses, rdi, prepsa_a,psaeff2_a,stop_ae,ae.stop.flg) %>% tbl_summary(by=trtgrp, 
-                       label =list(dosecyc~"Trt Cycles",obsterm~"Duration(days)",doses~"Cumul dose", rdi~"Relative DI", prepsa_a~"Base PSA",psaeff2_a~"PSA resp",stop_ae~"Discont due to AE",ae.stop.flg~"Discont. due to ADR"),
+back.out<-back.2 %>% select(trtgrp,dosecyc,obsterm,ttf,doses, rdi, prepsa_a,psaeff2_a,stop_ae,ae.stop.flg) %>% tbl_summary(by=trtgrp, 
+                       label =list(dosecyc~"Trt Cycles",obsterm~"Duration(days)",ttf~"Time to failure",doses~"Cumul dose", rdi~"Relative DI", prepsa_a~"Base PSA",psaeff2_a~"PSA resp",stop_ae~"Discont due to AE",ae.stop.flg~"Discont. due to ADR"),
                        percent="column",
                        digits=list(
                                    doses~1,
@@ -69,6 +72,7 @@ back.out<-back.2 %>% select(trtgrp,dosecyc,obsterm,doses, rdi, prepsa_a,psaeff2_
                                    prepsa_a~1),
                        statistic=list(dosecyc~"{median}({min}, {max})",
                                       obsterm~"{median}({min}, {max})",
+                                      ttf~"{median}({min}, {max})",
                                       doses~"{median}({min}, {max})",
                                       rdi~"{median}({min}, {max})",
                                       prepsa_a~"{median}({min}, {max})",
@@ -87,9 +91,24 @@ back.out.path<-here("cardlike","src","back_card.docx")
 back.out %>% as_flex_table() %>% flextable::save_as_docx(path=back.out.path)
 
 
+os.path<-here("cardlike","data","os_data286.xlsx")
+
+os.data<-read_excel(
+  path =os.path,
+  sheet="OS_2nd_ARAT",
+  skip=13,
+  .name_repair = "unique"
+) %>% mutate(patid=str_pad(.$patid,width = 7,side="left", pad="0"))
+
+back.all<-back %>% clean_names() %>% select("patid","fstdosen","fstdosec","fstdosec2","fstdate","enddate","obsterm","doses","dosecyc","rdi","prepsa_a","psaeff2_a","stopum","stop_ae","ttf","os","os_csr") %>% inner_join(jet.med.2,by="patid") %>% mutate(trtgrp=cut(fstdosen,breaks=c(-Inf,20,Inf), labels = c("x<=20","20<x")))
+
+os.data.2<-left_join(os.data,back.all,by="patid") %>% mutate(event=1-Censored)
 
 
-
+fit<-survfit(Surv(OS_4L_CABZ,event)~1,data=os.data.2)
+summary(fit)
+ggsurvplot(fit, data = os.data.2, risk.table = TRUE)
+surv_median(fit)
 
 
 
